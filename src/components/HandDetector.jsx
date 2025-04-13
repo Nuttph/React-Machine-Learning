@@ -171,7 +171,7 @@ const HandDetection = () => {
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">
-        Hand Detection for Sign Language
+        Hand Detection for Sign Language <span className="text-blue-500">(Version 1.0.0)</span>
       </h1>
       <div className="flex flex-col md:flex-row gap-6 max-w-6xl mx-auto">
         {/* มือซ้าย */}
