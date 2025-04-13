@@ -5,7 +5,6 @@ import Webcam from "react-webcam";
 const HandDetection = () => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
-  const [handPresence, setHandPresence] = useState(false);
   const [leftHand, setLeftHand] = useState({ count: 0, fingers: [], arm: {} });
   const [rightHand, setRightHand] = useState({ count: 0, fingers: [], arm: {} });
   const [isCameraOn, setIsCameraOn] = useState(false);
@@ -277,7 +276,7 @@ const HandDetection = () => {
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">
-        Hand Detection for Sign Language <span className="text-blue-500">(Version 1.0.0)</span>
+        Hand Detection for Sign Language <span className="text-blue-500">(Version 2.0.0)</span>
       </h1>
       <div className="flex justify-center mb-4 space-x-4">
         <button
@@ -388,6 +387,12 @@ const HandDetection = () => {
           height={480}
           className="absolute top-0 left-0"
         />
+        {/* <canvas
+          ref={canvasRef}
+          width={640}
+          height={480}
+          className="absolute top-[500px] left-0"
+        /> */}
       </div>
     </div>
   );
