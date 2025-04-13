@@ -7,7 +7,7 @@ const TextToVideo = () => {
     const handleSubmit = (e)=>{
         e.preventDefault();
         console.log(text)
-        const result = mockData.filter(item=>item.word_thai == text || item.word_english == text);
+        const result = mockData.filter(item=>item.word_thai == text || item.word_english.toLowerCase() == text.toLowerCase());
         if(result){
             console.log(result)
             setResult(result)
