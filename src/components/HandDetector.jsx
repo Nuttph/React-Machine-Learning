@@ -1,38 +1,69 @@
 import React, { useEffect, useRef, useState } from "react";
-import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
+import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/tasks-vision";
 import Webcam from "react-webcam";
 
 const HandDetection = () => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const [handPresence, setHandPresence] = useState(false);
-  const [leftHand, setLeftHand] = useState({ count: 0, fingers: [] });
-  const [rightHand, setRightHand] = useState({ count: 0, fingers: [] });
+  const [leftHand, setLeftHand] = useState({ count: 0, fingers: [], arm: {} });
+  const [rightHand, setRightHand] = useState({ count: 0, fingers: [], arm: {} });
+  const [isCameraOn, setIsCameraOn] = useState(false);
+  const [usePose, setUsePose] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const handLandmarkerRef = useRef(null);
+  const poseLandmarkerRef = useRef(null);
+  const lastDetectionTimeRef = useRef(0);
+  const animationFrameRef = useRef(null);
 
-  // โหลดโมเดล HandLandmarker
-  const initializeHandDetection = async () => {
+  // โหลดโมเดล HandLandmarker และ PoseLandmarker (ถ้าเลือก)
+  const initializeDetectors = async () => {
+    setIsLoading(true);
+    setError(null);
     try {
       const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
       );
+
+      // โหลด HandLandmarker
       const handLandmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
+            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
         },
         numHands: 2,
         runningMode: "video",
       });
       handLandmarkerRef.current = handLandmarker;
-      detectHands();
-    } catch (error) {
-      console.error("Error initializing hand detection:", error);
+
+      // โหลด PoseLandmarker ถ้าเปิดใช้งาน
+      if (usePose) {
+        const poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
+          },
+          runningMode: "video",
+        });
+        poseLandmarkerRef.current = poseLandmarker;
+      }
+
+      if (isCameraOn) {
+        detectHandsAndPose();
+      }
+      setIsLoading(false);
+    } catch (err) {
+      setError(`ไม่สามารถโหลดโมเดลได้: ${err.message}`);
+      setIsLoading(false);
+      console.error("Error initializing detectors:", err);
     }
   };
 
-  // ฟังก์ชันตรวจจับมือและท่าทาง
-  const detectHands = () => {
+  // ฟังก์ชันตรวจจับมือและท่าทางร่างกาย
+  const detectHandsAndPose = () => {
+    if (!isCameraOn) return;
+
     if (
       webcamRef.current &&
       webcamRef.current.video.readyState === 4 &&
@@ -40,51 +71,82 @@ const HandDetection = () => {
     ) {
       const video = webcamRef.current.video;
       const timestamp = performance.now();
-      const detections = handLandmarkerRef.current.detectForVideo(video, timestamp);
 
-      // อัปเดตสถานะว่ามีมือหรือไม่
-      setHandPresence(detections.handednesses.length > 0);
+      if (timestamp - lastDetectionTimeRef.current >= 100) {
+        const handDetections = handLandmarkerRef.current.detectForVideo(video, timestamp);
+        let poseDetections = {};
+        if (usePose && poseLandmarkerRef.current) {
+          poseDetections = poseLandmarkerRef.current.detectForVideo(video, timestamp);
+        }
 
-      // แสดงพิกัด landmarks ใน console
-      detections.landmarks.forEach((landmarks, handIndex) => {
-        console.log(`Hand ${handIndex + 1} Landmarks:`);
-        landmarks.forEach((landmark, index) => {
-          console.log(
-            `  Landmark ${index}: x=${landmark.x.toFixed(3)}, y=${landmark.y.toFixed(
-              3
-            )}, z=${landmark.z.toFixed(3)}`
-          );
+        const handData = handDetections.handednesses.map((handedness, index) => {
+          const handLabel = handedness[0].categoryName;
+          const landmarks = handDetections.landmarks[index].map((landmark, idx) => ({
+            point: idx + 1,
+            x: landmark.x.toFixed(3),
+            y: landmark.y.toFixed(3),
+            z: landmark.z.toFixed(3),
+          }));
+
+          // ดึงข้อมูลแขนจาก Pose หรือใช้ค่าเริ่มต้น
+          let arm = {};
+          if (usePose && poseDetections.landmarks && poseDetections.landmarks[0]) {
+            const poseLandmarks = poseDetections.landmarks[0];
+            arm = {
+              shoulder: handLabel === "Left" ? poseLandmarks[12] : poseLandmarks[11],
+              elbow: handLabel === "Left" ? poseLandmarks[14] : poseLandmarks[13],
+              wrist: handLabel === "Left" ? poseLandmarks[16] : poseLandmarks[15],
+            };
+            arm = {
+              shoulder: { x: arm.shoulder.x.toFixed(3), y: arm.shoulder.y.toFixed(3) },
+              elbow: { x: arm.elbow.x.toFixed(3), y: arm.elbow.y.toFixed(3) },
+              wrist: { x: arm.wrist.x.toFixed(3), y: arm.wrist.y.toFixed(3) },
+            };
+          }
+
+          return {
+            hand: handLabel,
+            landmarks,
+            arm,
+          };
         });
-      });
 
-      // ตรวจจับท่านิ้วสำหรับมือซ้ายและมือขวา
-      detectFingerGestures(detections);
+        handData.forEach(({ hand, arm }) => {
+          if (hand === "Left") {
+            setLeftHand((prev) => ({ ...prev, arm }));
+          } else if (hand === "Right") {
+            setRightHand((prev) => ({ ...prev, arm }));
+          }
+        });
 
-      // วาดจุดสำคัญบน Canvas
-      drawLandmarks(detections.landmarks);
+        if (handData.length > 0) {
+          console.log(handData);
+        }
+
+        detectFingerGestures(handDetections);
+        drawLandmarks(handDetections.landmarks, handData, poseDetections.landmarks);
+        lastDetectionTimeRef.current = timestamp;
+      }
     }
-    requestAnimationFrame(detectHands);
+    animationFrameRef.current = requestAnimationFrame(detectHandsAndPose);
   };
 
   // ฟังก์ชันตรวจจับท่านิ้ว
   const detectFingerGestures = (detections) => {
-    // รีเซ็ตข้อมูลมือ
-    setLeftHand({ count: 0, fingers: [] });
-    setRightHand({ count: 0, fingers: [] });
+    setLeftHand((prev) => ({ ...prev, count: 0, fingers: [] }));
+    setRightHand((prev) => ({ ...prev, count: 0, fingers: [] }));
 
     detections.handednesses.forEach((handedness, index) => {
       const landmarks = detections.landmarks[index];
-      const handLabel = handedness[0].categoryName; // "Left" หรือ "Right"
+      const handLabel = handedness[0].categoryName;
 
-      // ดึงจุดสำคัญของนิ้วต่างๆ
-      const wrist = landmarks[0]; // ข้อมือ
-      const thumbTip = landmarks[4]; // ปลายนิ้วโป้ง
-      const indexTip = landmarks[8]; // ปลายนิ้วชี้
-      const middleTip = landmarks[12]; // ปลายนิ้วกลาง
-      const ringTip = landmarks[16]; // ปลายนิ้วนาง
-      const pinkyTip = landmarks[20]; // ปลายนิ้วก้อย
+      const wrist = landmarks[0];
+      const thumbTip = landmarks[4];
+      const indexTip = landmarks[8];
+      const middleTip = landmarks[12];
+      const ringTip = landmarks[16];
+      const pinkyTip = landmarks[20];
 
-      // ตรวจสอบว่านิ้วใดยกขึ้น
       const fingers = [];
       if (thumbTip.y < wrist.y - 0.1) fingers.push("นิ้วโป้ง");
       if (indexTip.y < wrist.y - 0.1) fingers.push("นิ้วชี้");
@@ -92,25 +154,24 @@ const HandDetection = () => {
       if (ringTip.y < wrist.y - 0.1) fingers.push("นิ้วนาง");
       if (pinkyTip.y < wrist.y - 0.1) fingers.push("นิ้วก้อย");
 
-      // นับจำนวนนิ้วที่ยกขึ้น
       const fingerCount = fingers.length;
 
-      // อัปเดตข้อมูลมือ
       if (handLabel === "Left") {
-        setLeftHand({ count: fingerCount, fingers });
+        setLeftHand((prev) => ({ ...prev, count: fingerCount, fingers }));
       } else if (handLabel === "Right") {
-        setRightHand({ count: fingerCount, fingers });
+        setRightHand((prev) => ({ ...prev, count: fingerCount, fingers }));
       }
     });
   };
 
-  // ฟังก์ชันวาดจุดสำคัญของมือ
-  const drawLandmarks = (landmarksArray) => {
+  // ฟังก์ชันวาดจุดสำคัญของมือและแขน
+  const drawLandmarks = (handLandmarksArray, handData, poseLandmarksArray) => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    landmarksArray.forEach((landmarks) => {
+    // วาดจุดและเส้นของมือ
+    handLandmarksArray.forEach((landmarks) => {
       landmarks.forEach((landmark) => {
         const x = landmark.x * canvas.width;
         const y = landmark.y * canvas.height;
@@ -121,26 +182,9 @@ const HandDetection = () => {
       });
 
       const connections = [
-        [0, 1],
-        [1, 2],
-        [2, 3],
-        [3, 4], // นิ้วโป้ง
-        [0, 5],
-        [5, 6],
-        [6, 7],
-        [7, 8], // นิ้วชี้
-        [0, 9],
-        [9, 10],
-        [10, 11],
-        [11, 12], // นิ้วกลาง
-        [0, 13],
-        [13, 14],
-        [14, 15],
-        [15, 16], // นิ้วนาง
-        [0, 17],
-        [17, 18],
-        [18, 19],
-        [19, 20], // นิ้วก้อย
+        [0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8],
+        [0, 9], [9, 10], [10, 11], [11, 12], [0, 13], [13, 14], [14, 15], [15, 16],
+        [0, 17], [17, 18], [18, 19], [19, 20],
       ];
 
       ctx.strokeStyle = "green";
@@ -152,11 +196,71 @@ const HandDetection = () => {
         ctx.stroke();
       });
     });
+
+    // วาดแขนจาก handData
+    handData.forEach(({ arm, hand }) => {
+      if (arm.shoulder && arm.elbow && arm.wrist) {
+        const shoulder = { x: parseFloat(arm.shoulder.x) * canvas.width, y: parseFloat(arm.shoulder.y) * canvas.height };
+        const elbow = { x: parseFloat(arm.elbow.x) * canvas.width, y: parseFloat(arm.elbow.y) * canvas.height };
+        const wrist = { x: parseFloat(arm.wrist.x) * canvas.width, y: parseFloat(arm.wrist.y) * canvas.height };
+
+        ctx.beginPath();
+        ctx.arc(shoulder.x, shoulder.y, 7, 0, 2 * Math.PI);
+        ctx.fillStyle = "blue";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(elbow.x, elbow.y, 7, 0, 2 * Math.PI);
+        ctx.fillStyle = "red";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(wrist.x, wrist.y, 7, 0, 2 * Math.PI);
+        ctx.fillStyle = "yellow";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(shoulder.x, shoulder.y);
+        ctx.lineTo(elbow.x, elbow.y);
+        ctx.strokeStyle = hand === "Left" ? "purple" : "orange";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(elbow.x, elbow.y);
+        ctx.lineTo(wrist.x, wrist.y);
+        ctx.strokeStyle = hand === "Left" ? "purple" : "orange";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+    });
   };
 
-  // เริ่มต้นเมื่อคอมโพเนนต์ถูกเมานต์
+  // ฟังก์ชันสลับสถานะกล้อง
+  const toggleCamera = () => {
+    setIsCameraOn((prev) => {
+      const newState = !prev;
+      if (!newState && webcamRef.current && webcamRef.current.video.srcObject) {
+        webcamRef.current.video.srcObject.getTracks().forEach((track) => track.stop());
+      }
+      return newState;
+    });
+  };
+
+  // ฟังก์ชันสลับการใช้ PoseLandmarker
+  const togglePoseDetection = () => {
+    setUsePose((prev) => !prev);
+  };
+
+  // เริ่มต้นและจัดการการตรวจจับ
   useEffect(() => {
-    initializeHandDetection();
+    initializeDetectors();
+
+    if (isCameraOn) {
+      detectHandsAndPose();
+    } else if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
 
     return () => {
       if (webcamRef.current && webcamRef.current.video.srcObject) {
@@ -165,14 +269,47 @@ const HandDetection = () => {
       if (handLandmarkerRef.current) {
         handLandmarkerRef.current.close();
       }
+      if (poseLandmarkerRef.current) {
+        poseLandmarkerRef.current.close();
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
-  }, []);
+  }, [isCameraOn, usePose]);
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">
         Hand Detection for Sign Language <span className="text-blue-500">(Version 1.0.0)</span>
       </h1>
+      <div className="flex justify-center mb-4 space-x-4">
+        <button
+          onClick={toggleCamera}
+          className={`px-4 py-2 rounded text-white ${
+            isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"
+          }`}
+        >
+          {isCameraOn ? "ปิดกล้อง" : "เปิดกล้อง"}
+        </button>
+        
+      </div>
+      {isLoading && (
+        <div className="text-center mb-4">
+          <p className="text-gray-600">กำลังโหลดโมเดล...</p>
+        </div>
+      )}
+      {error && (
+        <div className="text-center mb-4">
+          <p className="text-red-500">{error}</p>
+          <button
+            onClick={initializeDetectors}
+            className="px-4 py-2 mt-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+          >
+            ลองโหลดใหม่
+          </button>
+        </div>
+      )}
       <div className="flex flex-col md:flex-row gap-6 max-w-6xl mx-auto">
         {/* มือซ้าย */}
         <div className="flex-1 bg-white rounded-lg shadow-lg p-6">
@@ -180,20 +317,26 @@ const HandDetection = () => {
           <p className="text-lg">
             จำนวนนิ้วที่ชู: <span className="font-bold text-blue-600">{leftHand.count}</span>
           </p>
-          <p className="text-lg">
-            นิ้วที่ตรวจจับได้:
-          </p>
+          <p className="text-lg">นิ้วที่ตรวจจับได้:</p>
           <ul className="list-disc pl-5 mt-2">
             {leftHand.fingers.length > 0 ? (
               leftHand.fingers.map((finger, idx) => (
-                <li key={idx} className="text-gray-600">
-                  {finger}
-                </li>
+                <li key={idx} className="text-gray-600">{finger}</li>
               ))
             ) : (
               <li className="text-gray-400">ไม่มีนิ้วที่ชู</li>
             )}
           </ul>
+          <p className="text-lg mt-4">ตำแหน่งแขน:</p>
+          {leftHand.arm.wrist ? (
+            <ul className="list-disc pl-5 mt-2">
+              <li>ข้อมือ: x={leftHand.arm.wrist.x}, y={leftHand.arm.wrist.y}</li>
+              <li>ข้อศอก: x={leftHand.arm.elbow.x}, y={leftHand.arm.elbow.y}</li>
+              <li>ไหล่: x={leftHand.arm.shoulder.x}, y={leftHand.arm.shoulder.y}</li>
+            </ul>
+          ) : (
+            <p className="text-gray-400 mt-2">ไม่มีข้อมูลแขน</p>
+          )}
         </div>
 
         {/* มือขวา */}
@@ -202,31 +345,47 @@ const HandDetection = () => {
           <p className="text-lg">
             จำนวนนิ้วที่ชู: <span className="font-bold text-blue-600">{rightHand.count}</span>
           </p>
-          <p className="text-lg">
-            นิ้วที่ตรวจจับได้:
-          </p>
+          <p className="text-lg">นิ้วที่ตรวจจับได้:</p>
           <ul className="list-disc pl-5 mt-2">
             {rightHand.fingers.length > 0 ? (
               rightHand.fingers.map((finger, idx) => (
-                <li key={idx} className="text-gray-600">
-                  {finger}
-                </li>
+                <li key={idx} className="text-gray-600">{finger}</li>
               ))
             ) : (
               <li className="text-gray-400">ไม่มีนิ้วที่ชู</li>
             )}
           </ul>
+          <p className="text-lg mt-4">ตำแหน่งแขน:</p>
+          {rightHand.arm.wrist ? (
+            <ul className="list-disc pl-5 mt-2">
+              <li>ข้อมือ: x={rightHand.arm.wrist.x}, y={rightHand.arm.wrist.y}</li>
+              <li>ข้อศอก: x={rightHand.arm.elbow.x}, y={rightHand.arm.elbow.y}</li>
+              <li>ไหล่: x={rightHand.arm.shoulder.x}, y={rightHand.arm.shoulder.y}</li>
+            </ul>
+          ) : (
+            <p className="text-gray-400 mt-2">ไม่มีข้อมูลแขน</p>
+          )}
         </div>
       </div>
 
       {/* วิดีโอและ Canvas */}
       <div className="relative mt-6 max-w-3xl mx-auto">
-        <Webcam
-          ref={webcamRef}
-          className="w-full rounded-lg shadow-lg"
-          style={{ width: "640px", height: "480px" }}
-          videoConstraints={{ facingMode: "user" }}
-        />
+        {isCameraOn ? (
+          <Webcam
+            ref={webcamRef}
+            className="w-full rounded-lg shadow-lg"
+            style={{ width: "640px", height: "480px" }}
+            videoConstraints={{ facingMode: "user" }}
+            onUserMediaError={() => setError("ไม่สามารถเข้าถึงกล้องได้ กรุณาตรวจสอบการตั้งค่า")}
+          />
+        ) : (
+          <div
+            className="w-full bg-gray-300 rounded-lg flex items-center justify-center"
+            style={{ width: "640px", height: "480px" }}
+          >
+            <p className="text-gray-600 text-lg">กล้องถูกปิดอยู่</p>
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           width={640}
