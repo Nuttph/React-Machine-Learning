@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/tasks-vision";
 import Webcam from "react-webcam";
+import VideoToText from "./resultvideo/VideoToText";
 
 const HandDetection = () => {
   const webcamRef = useRef(null);
@@ -14,6 +15,8 @@ const HandDetection = () => {
   const poseLandmarkerRef = useRef(null);
   const lastDetectionTimeRef = useRef(0);
   const animationFrameRef = useRef(null);
+
+  const [result,setResult] = useState("")
 
   // โหลดโมเดล HandLandmarker และ PoseLandmarker (ถ้าเลือก)
   const initializeDetectors = async () => {
@@ -80,7 +83,8 @@ const HandDetection = () => {
         const handData = handDetections.handednesses.map((handedness, index) => {
           const handLabel = handedness[0].categoryName;
           const landmarks = handDetections.landmarks[index].map((landmark, idx) => ({
-            point: idx + 1,
+            point: idx,
+            num:idx+1,
             x: landmark.x.toFixed(3),
             y: landmark.y.toFixed(3),
             z: landmark.z.toFixed(3),
@@ -197,11 +201,27 @@ const HandDetection = () => {
 
     // วาดแขนจาก handData
     handData.forEach(({ arm, hand }) => {
+      // console.log("This is arm",arm)
+      // console.log("This is hand",hand)
+      const shoulderY = parseFloat(arm.shoulder.y)
+      const wristY = parseFloat(arm.wrist.y)
+      const elbowY = parseFloat(arm.elbow.y)
+      if( wristY < shoulderY  < elbowY){
+        // console.log({
+        //   shoulderY:shoulderY,
+        //   wristY:wristY,
+        //   elbowY:elbowY
+        // })
+        // console.log("Hello สวัสดี")
+        setResult("สวัสดี")
+      }else{
+        setResult("")
+      }
       if (arm.shoulder && arm.elbow && arm.wrist) {
         const shoulder = { x: parseFloat(arm.shoulder.x) * canvas.width, y: parseFloat(arm.shoulder.y) * canvas.height };
         const elbow = { x: parseFloat(arm.elbow.x) * canvas.width, y: parseFloat(arm.elbow.y) * canvas.height };
         const wrist = { x: parseFloat(arm.wrist.x) * canvas.width, y: parseFloat(arm.wrist.y) * canvas.height };
-
+        
         ctx.beginPath();
         ctx.arc(shoulder.x, shoulder.y, 7, 0, 2 * Math.PI);
         ctx.fillStyle = "blue";
@@ -280,9 +300,13 @@ const HandDetection = () => {
       </h1>
       <div className="flex justify-center mb-4 space-x-4">
         <button
-          onClick={toggleCamera}
-          className={`px-4 py-2 rounded text-white ${
-            isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"
+          onClick={()=>{
+            if(!isLoading){
+              toggleCamera()
+            }
+          }}
+          className={`px-4 py-2 rounded cursor-pointer text-white ${
+            isLoading ? "bg-gray-500":isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"
           }`}
         >
           {isCameraOn ? "ปิดกล้อง" : "เปิดกล้อง"}
@@ -305,7 +329,7 @@ const HandDetection = () => {
           </button>
         </div>
       )}
-      <div className="flex flex-col md:flex-row gap-6 max-w-6xl mx-auto">
+      <div className="flex flex-col md:flex-row gap-6 max-w-6xl mx-auto h-[450px]">
         {/* มือซ้าย */}
         <div className="flex-1 bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-semibold text-gray-700 mb-4">มือซ้าย</h2>
@@ -363,6 +387,7 @@ const HandDetection = () => {
         </div>
       </div>
 
+<div className="text-center my-4 h-[50px]">result: {result}</div>
       {/* วิดีโอและ Canvas */}
       <div className="relative mt-6 max-w-3xl mx-auto">
         {isCameraOn ? (
@@ -394,6 +419,7 @@ const HandDetection = () => {
           className="absolute top-[500px] left-0"
         /> */}
       </div>
+      <VideoToText text={result}/>
     </div>
   );
 };

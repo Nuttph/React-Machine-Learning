@@ -1,0 +1,20 @@
+[
+    {
+        "id": 1,
+        "word_thai": "สวัสดี",
+        "word_english": "Hello",
+        "description": "สวัสดี: ท่ามือนี้ใช้กับผู้ใหญ่ ผู้มีอาวุโส ผู้มีตำแหน่งสูง",
+        "video_url": "https://www.th-sl.com/wp-content/uploads/2020/09/1.1.1.gif",
+        "thumbnail_url": "https://www.th-sl.com/wp-content/uploads/2020/09/1.1.1.gif",
+        "created_at": "2025-04-13T12:33:32.094Z"
+      },      
+    {
+        "id": 2,
+        "word_thai": "ขอโทษ",
+        "word_english": "Hello",
+        "description": "สวัสดี: ท่ามือนี้ใช้กับผู้ใหญ่ ผู้มีอาวุโส ผู้มีตำแหน่งสูง",
+        "video_url": "https://www.th-sl.com/wp-content/uploads/2020/09/1.1.1.gif",
+        "thumbnail_url": "https://www.th-sl.com/wp-content/uploads/2020/09/1.1.1.gif",
+        "created_at": "2025-04-13T12:33:32.094Z"
+      }    
+]
