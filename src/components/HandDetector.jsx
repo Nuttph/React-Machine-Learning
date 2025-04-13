@@ -9,7 +9,6 @@ const HandDetection = () => {
   const [leftHand, setLeftHand] = useState({ count: 0, fingers: [], arm: {} });
   const [rightHand, setRightHand] = useState({ count: 0, fingers: [], arm: {} });
   const [isCameraOn, setIsCameraOn] = useState(false);
-  const [usePose, setUsePose] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const handLandmarkerRef = useRef(null);
@@ -30,7 +29,7 @@ const HandDetection = () => {
       const handLandmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
         },
         numHands: 2,
         runningMode: "video",
@@ -38,11 +37,11 @@ const HandDetection = () => {
       handLandmarkerRef.current = handLandmarker;
 
       // โหลด PoseLandmarker ถ้าเปิดใช้งาน
-      if (usePose) {
+      if (true) {
         const poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
+              "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
           },
           runningMode: "video",
         });
@@ -72,10 +71,10 @@ const HandDetection = () => {
       const video = webcamRef.current.video;
       const timestamp = performance.now();
 
-      if (timestamp - lastDetectionTimeRef.current >= 100) {
+      if (timestamp - lastDetectionTimeRef.current >= 200) {
         const handDetections = handLandmarkerRef.current.detectForVideo(video, timestamp);
         let poseDetections = {};
-        if (usePose && poseLandmarkerRef.current) {
+        if (poseLandmarkerRef.current) {
           poseDetections = poseLandmarkerRef.current.detectForVideo(video, timestamp);
         }
 
@@ -90,7 +89,7 @@ const HandDetection = () => {
 
           // ดึงข้อมูลแขนจาก Pose หรือใช้ค่าเริ่มต้น
           let arm = {};
-          if (usePose && poseDetections.landmarks && poseDetections.landmarks[0]) {
+          if (poseDetections.landmarks && poseDetections.landmarks[0]) {
             const poseLandmarks = poseDetections.landmarks[0];
             arm = {
               shoulder: handLabel === "Left" ? poseLandmarks[12] : poseLandmarks[11],
@@ -247,10 +246,7 @@ const HandDetection = () => {
     });
   };
 
-  // ฟังก์ชันสลับการใช้ PoseLandmarker
-  const togglePoseDetection = () => {
-    setUsePose((prev) => !prev);
-  };
+ 
 
   // เริ่มต้นและจัดการการตรวจจับ
   useEffect(() => {
@@ -276,7 +272,7 @@ const HandDetection = () => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isCameraOn, usePose]);
+  }, [isCameraOn]);
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
