@@ -6,9 +6,10 @@ const HandDetection = () => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const [handPresence, setHandPresence] = useState(false);
-  const [leftHand, setLeftHand] = useState({ count: 0, fingers: [] });
-  const [rightHand, setRightHand] = useState({ count: 0, fingers: [] });
+  const [leftHand, setLeftHand] = useState({ count: 0, fingers: [], arm: {} });
+  const [rightHand, setRightHand] = useState({ count: 0, fingers: [], arm: {} });
   const handLandmarkerRef = useRef(null);
+  const lastDetectionTimeRef = useRef(0);
 
   // โหลดโมเดล HandLandmarker
   const initializeHandDetection = async () => {
@@ -31,6 +32,44 @@ const HandDetection = () => {
     }
   };
 
+  // ฟังก์ชันคำนวณตำแหน่งแขน
+  const calculateArmPositions = (landmarks, handLabel) => {
+    const wrist = landmarks[0]; // ข้อมือ
+    const indexMCP = landmarks[5]; // โคนนิ้วชี้
+    const pinkyMCP = landmarks[17]; // โคนนิ้วก้อย
+
+    // คำนวณทิศทางของมือโดยใช้จุดโคนนิ้วชี้และนิ้วก้อย
+    const handDirection = {
+      x: indexMCP.x - pinkyMCP.x,
+      y: indexMCP.y - pinkyMCP.y,
+    };
+    const magnitude = Math.sqrt(handDirection.x ** 2 + handDirection.y ** 2);
+    const normalizedDirection = {
+      x: handDirection.x / (magnitude || 1),
+      y: handDirection.y / (magnitude || 1),
+    };
+
+    // ประมาณตำแหน่งข้อศอก (ปลายแขน) โดยสมมติว่าแขนยื่นออกจากข้อมือในทิศทางตรงข้ามมือ
+    const elbowDistance = 0.3; // ระยะห่างจากข้อมือถึงข้อศอก (ปรับได้)
+    const elbow = {
+      x: wrist.x - normalizedDirection.x * elbowDistance,
+      y: wrist.y - normalizedDirection.y * elbowDistance,
+    };
+
+    // ประมาณตำแหน่งไหล่ (ต้นแขน) โดยสมมติว่าไหล่อยู่ห่างจากข้อศอก
+    const shoulderDistance = 0.4; // ระยะห่างจากข้อศอกถึงไหล่ (ปรับได้)
+    const shoulder = {
+      x: elbow.x - normalizedDirection.x * shoulderDistance,
+      y: elbow.y - normalizedDirection.y * shoulderDistance,
+    };
+
+    return {
+      wrist: { x: wrist.x.toFixed(3), y: wrist.y.toFixed(3) },
+      elbow: { x: elbow.x.toFixed(3), y: elbow.y.toFixed(3) },
+      shoulder: { x: shoulder.x.toFixed(3), y: shoulder.y.toFixed(3) },
+    };
+  };
+
   // ฟังก์ชันตรวจจับมือและท่าทาง
   const detectHands = () => {
     if (
@@ -40,51 +79,69 @@ const HandDetection = () => {
     ) {
       const video = webcamRef.current.video;
       const timestamp = performance.now();
-      const detections = handLandmarkerRef.current.detectForVideo(video, timestamp);
 
-      // อัปเดตสถานะว่ามีมือหรือไม่
-      setHandPresence(detections.handednesses.length > 0);
+      if (timestamp - lastDetectionTimeRef.current >= 100) {
+        const detections = handLandmarkerRef.current.detectForVideo(video, timestamp);
 
-      // แสดงพิกัด landmarks ใน console
-      detections.landmarks.forEach((landmarks, handIndex) => {
-        console.log(`Hand ${handIndex + 1} Landmarks:`);
-        landmarks.forEach((landmark, index) => {
-          console.log(
-            `  Landmark ${index}: x=${landmark.x.toFixed(3)}, y=${landmark.y.toFixed(
-              3
-            )}, z=${landmark.z.toFixed(3)}`
-          );
+        // สร้าง array สำหรับเก็บข้อมูลมือ
+        const handData = detections.handednesses.map((handedness, index) => {
+          const handLabel = handedness[0].categoryName;
+          const landmarks = detections.landmarks[index].map((landmark, idx) => ({
+            point: idx + 1,
+            x: landmark.x.toFixed(3),
+            y: landmark.y.toFixed(3),
+            z: landmark.z.toFixed(3),
+          }));
+          const arm = calculateArmPositions(detections.landmarks[index], handLabel);
+
+          return {
+            hand: handLabel,
+            landmarks,
+            arm,
+          };
         });
-      });
 
-      // ตรวจจับท่านิ้วสำหรับมือซ้ายและมือขวา
-      detectFingerGestures(detections);
+        // อัปเดต state สำหรับแขน
+        handData.forEach(({ hand, arm }) => {
+          if (hand === "Left") {
+            setLeftHand((prev) => ({ ...prev, arm }));
+          } else if (hand === "Right") {
+            setRightHand((prev) => ({ ...prev, arm }));
+          }
+        });
 
-      // วาดจุดสำคัญบน Canvas
-      drawLandmarks(detections.landmarks);
+        if (handData.length > 0) {
+          console.log(handData);
+        }
+        
+        // if (handData.length === 0) {
+        //   console.log("No hands detected.");
+        // }
+
+        detectFingerGestures(detections);
+        drawLandmarks(detections.landmarks, handData);
+        lastDetectionTimeRef.current = timestamp;
+      }
     }
     requestAnimationFrame(detectHands);
   };
 
   // ฟังก์ชันตรวจจับท่านิ้ว
   const detectFingerGestures = (detections) => {
-    // รีเซ็ตข้อมูลมือ
-    setLeftHand({ count: 0, fingers: [] });
-    setRightHand({ count: 0, fingers: [] });
+    setLeftHand((prev) => ({ ...prev, count: 0, fingers: [] }));
+    setRightHand((prev) => ({ ...prev, count: 0, fingers: [] }));
 
     detections.handednesses.forEach((handedness, index) => {
       const landmarks = detections.landmarks[index];
-      const handLabel = handedness[0].categoryName; // "Left" หรือ "Right"
+      const handLabel = handedness[0].categoryName;
 
-      // ดึงจุดสำคัญของนิ้วต่างๆ
-      const wrist = landmarks[0]; // ข้อมือ
-      const thumbTip = landmarks[4]; // ปลายนิ้วโป้ง
-      const indexTip = landmarks[8]; // ปลายนิ้วชี้
-      const middleTip = landmarks[12]; // ปลายนิ้วกลาง
-      const ringTip = landmarks[16]; // ปลายนิ้วนาง
-      const pinkyTip = landmarks[20]; // ปลายนิ้วก้อย
+      const wrist = landmarks[0];
+      const thumbTip = landmarks[4];
+      const indexTip = landmarks[8];
+      const middleTip = landmarks[12];
+      const ringTip = landmarks[16];
+      const pinkyTip = landmarks[20];
 
-      // ตรวจสอบว่านิ้วใดยกขึ้น
       const fingers = [];
       if (thumbTip.y < wrist.y - 0.1) fingers.push("นิ้วโป้ง");
       if (indexTip.y < wrist.y - 0.1) fingers.push("นิ้วชี้");
@@ -92,25 +149,24 @@ const HandDetection = () => {
       if (ringTip.y < wrist.y - 0.1) fingers.push("นิ้วนาง");
       if (pinkyTip.y < wrist.y - 0.1) fingers.push("นิ้วก้อย");
 
-      // นับจำนวนนิ้วที่ยกขึ้น
       const fingerCount = fingers.length;
 
-      // อัปเดตข้อมูลมือ
       if (handLabel === "Left") {
-        setLeftHand({ count: fingerCount, fingers });
+        setLeftHand((prev) => ({ ...prev, count: fingerCount, fingers }));
       } else if (handLabel === "Right") {
-        setRightHand({ count: fingerCount, fingers });
+        setRightHand((prev) => ({ ...prev, count: fingerCount, fingers }));
       }
     });
   };
 
-  // ฟังก์ชันวาดจุดสำคัญของมือ
-  const drawLandmarks = (landmarksArray) => {
+  // ฟังก์ชันวาดจุดสำคัญของมือและแขน
+  const drawLandmarks = (landmarksArray, handData) => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    landmarksArray.forEach((landmarks) => {
+    landmarksArray.forEach((landmarks, index) => {
+      // วาดจุดของมือ
       landmarks.forEach((landmark) => {
         const x = landmark.x * canvas.width;
         const y = landmark.y * canvas.height;
@@ -120,27 +176,28 @@ const HandDetection = () => {
         ctx.fill();
       });
 
+      // วาดเส้นเชื่อมของมือ
       const connections = [
         [0, 1],
         [1, 2],
         [2, 3],
-        [3, 4], // นิ้วโป้ง
+        [3, 4],
         [0, 5],
         [5, 6],
         [6, 7],
-        [7, 8], // นิ้วชี้
+        [7, 8],
         [0, 9],
         [9, 10],
         [10, 11],
-        [11, 12], // นิ้วกลาง
+        [11, 12],
         [0, 13],
         [13, 14],
         [14, 15],
-        [15, 16], // นิ้วนาง
+        [15, 16],
         [0, 17],
         [17, 18],
         [18, 19],
-        [19, 20], // นิ้วก้อย
+        [19, 20],
       ];
 
       ctx.strokeStyle = "green";
@@ -151,6 +208,41 @@ const HandDetection = () => {
         ctx.lineTo(landmarks[end].x * canvas.width, landmarks[end].y * canvas.height);
         ctx.stroke();
       });
+
+      // วาดแขน
+      const arm = handData[index]?.arm;
+      if (arm) {
+        const wrist = { x: parseFloat(arm.wrist.x) * canvas.width, y: parseFloat(arm.wrist.y) * canvas.height };
+        const elbow = { x: parseFloat(arm.elbow.x) * canvas.width, y: parseFloat(arm.elbow.y) * canvas.height };
+        const shoulder = { x: parseFloat(arm.shoulder.x) * canvas.width, y: parseFloat(arm.shoulder.y) * canvas.height };
+
+        // วาดจุดข้อศอกและไหล่
+        ctx.beginPath();
+        ctx.arc(elbow.x, elbow.y, 7, 0, 2 * Math.PI);
+        ctx.fillStyle = "red";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(shoulder.x, shoulder.y, 7, 0, 2 * Math.PI);
+        ctx.fillStyle = "blue";
+        ctx.fill();
+
+        // วาดเส้นปลายแขน (ข้อมือ → ข้อศอก)
+        ctx.beginPath();
+        ctx.moveTo(wrist.x, wrist.y);
+        ctx.lineTo(elbow.x, elbow.y);
+        ctx.strokeStyle = "orange";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // วาดเส้นต้นแขน (ข้อศอก → ไหล่)
+        ctx.beginPath();
+        ctx.moveTo(elbow.x, elbow.y);
+        ctx.lineTo(shoulder.x, shoulder.y);
+        ctx.strokeStyle = "purple";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
     });
   };
 
@@ -180,9 +272,7 @@ const HandDetection = () => {
           <p className="text-lg">
             จำนวนนิ้วที่ชู: <span className="font-bold text-blue-600">{leftHand.count}</span>
           </p>
-          <p className="text-lg">
-            นิ้วที่ตรวจจับได้:
-          </p>
+          <p className="text-lg">นิ้วที่ตรวจจับได้:</p>
           <ul className="list-disc pl-5 mt-2">
             {leftHand.fingers.length > 0 ? (
               leftHand.fingers.map((finger, idx) => (
@@ -194,6 +284,16 @@ const HandDetection = () => {
               <li className="text-gray-400">ไม่มีนิ้วที่ชู</li>
             )}
           </ul>
+          <p className="text-lg mt-4">ตำแหน่งแขน:</p>
+          {leftHand.arm.wrist ? (
+            <ul className="list-disc pl-5 mt-2">
+              <li>ข้อมือ: x={leftHand.arm.wrist.x}, y={leftHand.arm.wrist.y}</li>
+              <li>ข้อศอก: x={leftHand.arm.elbow.x}, y={leftHand.arm.elbow.y}</li>
+              <li>ไหล่: x={leftHand.arm.shoulder.x}, y={leftHand.arm.shoulder.y}</li>
+            </ul>
+          ) : (
+            <p className="text-gray-400 mt-2">ไม่มีข้อมูลแขน</p>
+          )}
         </div>
 
         {/* มือขวา */}
@@ -202,9 +302,7 @@ const HandDetection = () => {
           <p className="text-lg">
             จำนวนนิ้วที่ชู: <span className="font-bold text-blue-600">{rightHand.count}</span>
           </p>
-          <p className="text-lg">
-            นิ้วที่ตรวจจับได้:
-          </p>
+          <p className="text-lg">นิ้วที่ตรวจจับได้:</p>
           <ul className="list-disc pl-5 mt-2">
             {rightHand.fingers.length > 0 ? (
               rightHand.fingers.map((finger, idx) => (
@@ -216,6 +314,16 @@ const HandDetection = () => {
               <li className="text-gray-400">ไม่มีนิ้วที่ชู</li>
             )}
           </ul>
+          <p className="text-lg mt-4">ตำแหน่งแขน:</p>
+          {rightHand.arm.wrist ? (
+            <ul className="list-disc pl-5 mt-2">
+              <li>ข้อมือ: x={rightHand.arm.wrist.x}, y={rightHand.arm.wrist.y}</li>
+              <li>ข้อศอก: x={rightHand.arm.elbow.x}, y={rightHand.arm.elbow.y}</li>
+              <li>ไหล่: x={rightHand.arm.shoulder.x}, y={rightHand.arm.shoulder.y}</li>
+            </ul>
+          ) : (
+            <p className="text-gray-400 mt-2">ไม่มีข้อมูลแขน</p>
+          )}
         </div>
       </div>
 
