@@ -9,7 +9,7 @@ const VideoToText = (param) => {
         setData(mapResult)
     },[text])
     return (
-    <div>
+    <div className=''>
         <div>
             result : {text}
         </div>
@@ -19,7 +19,7 @@ const VideoToText = (param) => {
                     <div>
                         <h1>{item.word_thai}</h1>
                         <p>{item.description}</p>
-                        {/* <img src={item.video_url}></img> */}
+                        <img src={item.video_url}></img>
                     </div>
                 ))}
             </div>
