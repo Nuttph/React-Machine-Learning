@@ -207,12 +207,6 @@ const HandDetection = () => {
       const wristY = parseFloat(arm.wrist.y)
       const elbowY = parseFloat(arm.elbow.y)
       if( wristY < shoulderY  < elbowY){
-        // console.log({
-        //   shoulderY:shoulderY,
-        //   wristY:wristY,
-        //   elbowY:elbowY
-        // })
-        // console.log("Hello สวัสดี")
         setResult("สวัสดี")
       }else{
         setResult("")
@@ -311,7 +305,6 @@ const HandDetection = () => {
         >
           {isCameraOn ? "ปิดกล้อง" : "เปิดกล้อง"}
         </button>
-        
       </div>
       {isLoading && (
         <div className="text-center mb-4">
