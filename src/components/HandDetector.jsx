@@ -4,6 +4,8 @@ import Webcam from "react-webcam";
 import VideoToText from "./resultvideo/VideoToText";
 
 const HandDetection = () => {
+  const [data,setData] = useState([]);
+  const [preData,setPreData] = useState();
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const [leftHand, setLeftHand] = useState({ count: 0, fingers: [], arm: {} });
@@ -18,6 +20,7 @@ const HandDetection = () => {
 
   const [result,setResult] = useState("")
 
+  const labelName = "hello";
   // โหลดโมเดล HandLandmarker และ PoseLandmarker (ถ้าเลือก)
   const initializeDetectors = async () => {
     setIsLoading(true);
@@ -84,7 +87,7 @@ const HandDetection = () => {
           const handLabel = handedness[0].categoryName;
           const landmarks = handDetections.landmarks[index].map((landmark, idx) => ({
             point: idx,
-            num:idx+1,
+            // num:idx+1,
             x: landmark.x.toFixed(3),
             y: landmark.y.toFixed(3),
             z: landmark.z.toFixed(3),
@@ -107,9 +110,10 @@ const HandDetection = () => {
           }
 
           return {
+            label:labelName,
             hand: handLabel,
             landmarks,
-            arm,
+            arm
           };
         });
 
@@ -122,9 +126,9 @@ const HandDetection = () => {
         });
 
         if (handData.length > 0) {
-          console.log(handData);
+          setPreData(handData)
         }
-
+         
         detectFingerGestures(handDetections);
         drawLandmarks(handDetections.landmarks, handData, poseDetections.landmarks);
         lastDetectionTimeRef.current = timestamp;
@@ -206,11 +210,11 @@ const HandDetection = () => {
       const shoulderY = parseFloat(arm.shoulder.y)
       const wristY = parseFloat(arm.wrist.y)
       const elbowY = parseFloat(arm.elbow.y)
-      if( wristY < shoulderY  < elbowY){
-        setResult("สวัสดี")
-      }else{
-        setResult("")
-      }
+      // if( wristY < shoulderY  < elbowY){
+      //   setResult("สวัสดี")
+      // }else{
+      //   setResult("")
+      // }
       if (arm.shoulder && arm.elbow && arm.wrist) {
         const shoulder = { x: parseFloat(arm.shoulder.x) * canvas.width, y: parseFloat(arm.shoulder.y) * canvas.height };
         const elbow = { x: parseFloat(arm.elbow.x) * canvas.width, y: parseFloat(arm.elbow.y) * canvas.height };
@@ -380,7 +384,17 @@ const HandDetection = () => {
         </div>
       </div>
 
-<div className="text-center my-4 h-[50px]">result: {result}</div>
+    {/* <div className="text-center my-4 h-[50px]">result: {result}</div> */}
+    <div className="flex items-center justify-center gap-4 mt-2">
+      <button className="border rounded-lg px-4 py-2 cursor-pointer" onClick={()=>{
+        // setData([...data,preData])
+        console.log(preData)
+        setData([...data,preData])
+      }}>Add Data</button>
+      <button className="border rounded-lg px-4 py-2 cursor-pointer" onClick={()=>{
+        console.log("data",data);
+      }}>Log Data</button>
+    </div>
       {/* วิดีโอและ Canvas */}
       <div className="relative mt-6 max-w-3xl mx-auto">
         {isCameraOn ? (
