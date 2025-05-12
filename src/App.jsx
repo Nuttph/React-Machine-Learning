@@ -1,23 +1,20 @@
-import React from 'react'
-import HandDetector from './components/HandDetector'
-import TextToVideo from './components/texttovideo/TextToVideo'
-
-import { Routes,Route, Link } from 'react-router-dom'
-import TestModel from './components/TestModel'
+import { Route, Routes } from "react-router-dom"
+import FirstPage from "./components/FirstPage/FirstPage"
+import Cookie from "./components/layout/Cookie"
+import Navbar from "./components/layout/Navbar"
+import CheckDevice from "./components/Check/CheckDevice"
 
 const App = () => {
   return (
-    <div className=''>
-      <div className='flex flex-row items-center justify-center gap-4 bg-[#333]'>
-        <Link className='px-4 py-2 bg-yellow-300 hover:bg-yellow-600 duration-300 rounded-lg border my-4' to={"/hand-detect"}>Hand Detect</Link>
-        <Link className='px-4 py-2 bg-yellow-300 hover:bg-yellow-600 duration-300 rounded-lg border my-4' to={"/text-to-video"}>Text to Video</Link>
-        <Link className='px-4 py-2 bg-yellow-300 hover:bg-yellow-600 duration-300 rounded-lg border my-4' to={"/test-model"}>Test Model</Link>
+    <div className="bg-[#EAEAEA] min-h-screen">
+      <div className="pt-[30px]">
+        <Navbar/>
       </div>
-      <Routes>
-        <Route path="/hand-detect" element={<HandDetector/>}/>
-        <Route path="/text-to-video" element={<TextToVideo/>}/>
-        <Route path="/test-model" element={<TestModel/>}/>
-      </Routes>
+        <Routes>
+          <Route path="/" element={<FirstPage />} />
+          <Route path="/check-device" element={<CheckDevice />} />
+        </Routes>
+      <Cookie/>
     </div>
   )
 }

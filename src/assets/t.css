@@ -1,0 +1,6 @@
+.bg-g-b{
+    background-image: linear-gradient(45deg, rgb(239, 229, 253) 0%, #6875FF 24%, #6875FF 60%, #1427f7 100%);
+}
+.video-demo-bg{
+    background-image: radial-gradient(circle, #6875FF 0%, #6875FF 42%, #b3b8f7 62%, rgba(255, 255, 255, 1) 86%, rgba(255, 255, 255, 1) 99%);
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import mockData from "../mock/Api.json"
+import mockData from "../../mock/Api.json"
 const VideoToText = (param) => {
     const [data,setData] = useState([]);
     const {text} = param;
